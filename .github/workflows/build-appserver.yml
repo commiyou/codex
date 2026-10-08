@@ -1,0 +1,42 @@
+name: build-appserver
+
+on:
+  push:
+    branches: [appserver-unlimited]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: codex-rs
+
+jobs:
+  build:
+    name: Build codex (aarch64-apple-darwin)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Configure rusty_v8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: aarch64-apple-darwin
+
+      - name: Cargo build (codex)
+        run: |
+          set -euo pipefail
+          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+          export STABLE_GIT_COMMIT
+          cargo build --target aarch64-apple-darwin --release --bin codex
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-appserver-arm64
+          path: codex-rs/target/aarch64-apple-darwin/release/codex
+          if-no-files-found: error
