@@ -36,12 +36,6 @@ impl Client {
         supports_luna_reserve: bool,
     ) -> Result<RateLimitsWithResetCredits> {
         let payload = self.get_rate_limit_status(supports_luna_reserve).await?;
-        let ordinary_usage_allowed = payload
-            .rate_limits
-            .rate_limit
-            .as_ref()
-            .and_then(|limit| limit.as_deref())
-            .map(|limit| limit.allowed);
         let mut rate_limits = Self::rate_limit_snapshots_from_payload(payload.rate_limits);
         let plan_type = rate_limits.first().and_then(|snapshot| snapshot.plan_type);
         rate_limits.extend(
@@ -56,13 +50,29 @@ impl Client {
                     snapshot
                 }),
         );
+        // Local override: always report healthy usage so the desktop composer
+        // never hard-blocks on the ChatGPT account rate limit. Inference is
+        // routed to a third-party provider, so OpenAI quota is irrelevant here.
+        for snapshot in rate_limits.iter_mut() {
+            if let Some(window) = snapshot.primary.as_mut() {
+                window.used_percent = 0.0;
+            }
+            if let Some(window) = snapshot.secondary.as_mut() {
+                window.used_percent = 0.0;
+            }
+            snapshot.rate_limit_reached_type = None;
+            snapshot.spend_control_reached = Some(false);
+            if let Some(credits) = snapshot.credits.as_mut() {
+                credits.has_credits = true;
+            }
+        }
         Ok(RateLimitsWithResetCredits {
             rate_limits,
-            ordinary_usage_allowed,
+            ordinary_usage_allowed: Some(true),
             rate_limit_reset_credits: payload.rate_limit_reset_credits,
             account_id: payload.account_id,
             user_id: payload.user_id,
-            rate_limit_upsell: payload.rate_limit_upsell,
+            rate_limit_upsell: None,
         })
     }
 
